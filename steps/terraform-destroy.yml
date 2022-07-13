@@ -1,0 +1,25 @@
+parameters:
+- name: AzureRMServiceConnection # name of the Service Connection
+  type: string
+- name: variables
+  type: object
+  default: {}
+- name: commandOptions # additional arguments for terraform
+  type: string
+  default: ''
+- name: workingDirectory # Folder with terraform files
+  type: string
+  default: '$(System.DefaultWorkingDirectory)'
+
+steps:
+- task: TerraformTaskV2@2
+  displayName: Terraform destroy
+  inputs:
+    provider: 'azurerm'
+    command: 'destroy'
+    environmentServiceNameAzureRM: ${{ parameters.AzureRMServiceConnection }}
+    workingDirectory: ${{ parameters.workingDirectory }}
+    commandOptions: '-input=false ${{ parameters.commandOptions }}'
+  env:
+    ${{ each variable in parameters.variables }}:
+      ${{ format('TF_VAR_{0}', variable.key) }}: ${{ variable.value}}

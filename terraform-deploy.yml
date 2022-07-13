@@ -1,0 +1,116 @@
+parameters:
+  - name: AzureRMServiceConnection # name of the Service Connection
+    type: string
+  - name: storage_account_resource_group_name # The name of the resource group which contains the storage account selected below
+    type: string
+    default: "rg-TerraformBackend-01"
+  - name: storage_account_name # The name of the storage account which contains the Azure Blob container selected below.
+    type: string
+  - name: container_name # The name of the Azure Blob container in which to store the Terraform remote state file.
+    type: string
+  - name: key # The path to the Terraform remote state file inside the container. For example, if you want to store the state file, named terraform.tfstate, inside a folder, named tf, then give the input 'tf/terraform.tfstate'
+    type: string
+  - name: variables
+    type: object
+    default: {}
+  - name: terraformVersion # The Version number of terraform to install
+    type: string
+    default: "1.1.2"
+  - name: commandOptions # additional arguments for terraform plan and apply
+    type: string
+    default: ""
+  - name: commandOptionsInit # additional arguments for terraform init
+    type: string
+    default: ""
+  - name: workingDirectory # Folder with terraform files
+    type: string
+    default: "$(System.DefaultWorkingDirectory)"
+  - name: environment #name of the envorenment to use - should only contain [A-Za-z0-9] or underscores, dashes, spaces as used as stage id
+    type: string
+  - name: initSteps #steps to run before init in each stage probably only runs fine when using DefaultWorkingDirectory as workingDirectory
+    type: stepList
+    default: []
+  - name: allowedBranches #List of branches to allow deployment from
+    type: object
+    default:
+      - "refs/heads/master"
+      - "refs/heads/main"
+  - name: afterApplySteps #steps run after terraform apply
+    type: stepList
+    default: []
+
+stages:
+  - stage: "Plan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    displayName: "${{ parameters.environment }} - Plan Deployment"
+    jobs:
+      - job: Plan
+        steps:
+          - ${{ parameters.initSteps }}
+          - template: steps/terraform-init.yml
+            parameters:
+              AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+              storage_account_resource_group_name: ${{ parameters.storage_account_resource_group_name }}
+              terraformVersion: ${{ parameters.terraformVersion }}
+              storage_account_name: ${{ parameters.storage_account_name }}
+              container_name: ${{ parameters.container_name }}
+              key: ${{ parameters.key }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              commandOptions: "${{ parameters.commandOptionsInit }}"
+          - template: steps/terraform-plan.yml
+            parameters:
+              AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+              variables: ${{ parameters.variables }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              commandOptions: "-out=tfplan ${{ parameters.commandOptions }}"
+          # archive files to preserve permissions (https://github.com/microsoft/azure-pipelines-tasks/issues/6364)
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: ${{ parameters.workingDirectory }}
+              includeRootFolder: false
+              archiveType: "tar"
+              archiveFile: "$(Build.ArtifactStagingDirectory)/QBYND.tar.gz"
+              replaceExistingArchive: true
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: ${{ parameters.environment }}
+
+  - stage: "Deploy${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    displayName: "${{ parameters.environment }} - Deploy"
+    dependsOn: "Plan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    condition: and(succeeded(), or(${{ containsValue(parameters.allowedBranches,variables['Build.SourceBranch']) }}, eq(${{ length(parameters.allowedBranches)  }},0)))
+    jobs:
+      - deployment: Deploy
+        environment: ${{ parameters.environment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                #Use download task (https://github.com/microsoft/azure-pipelines-tasks/issues/11267)
+                - download: none
+                - ${{ parameters.initSteps }}
+                - task: DownloadPipelineArtifact@2
+                  displayName: "Download Plan"
+                  inputs:
+                    source: current
+                    artifactName: ${{ parameters.environment }}
+                    targetPath: $(Build.ArtifactStagingDirectory)
+                - task: ExtractFiles@1
+                  inputs:
+                    archiveFilePatterns: "$(Build.ArtifactStagingDirectory)/QBYND.tar.gz"
+                    destinationFolder: "$(System.DefaultWorkingDirectory)"
+                    cleanDestinationFolder: false
+                - template: steps/terraform-init.yml
+                  parameters:
+                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+                    storage_account_resource_group_name: ${{ parameters.storage_account_resource_group_name }}
+                    terraformVersion: ${{ parameters.terraformVersion }}
+                    storage_account_name: ${{ parameters.storage_account_name }}
+                    container_name: ${{ parameters.container_name }}
+                    key: ${{ parameters.key }}
+                    workingDirectory: "$(System.DefaultWorkingDirectory)"
+                    commandOptions: "${{ parameters.commandOptionsinit }}"
+                - template: steps/terraform-apply.yml
+                  parameters:
+                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+                    workingDirectory: "$(System.DefaultWorkingDirectory)"
+                    commandOptions: "${{ parameters.commandOptions }} tfplan"
+                - ${{ parameters.afterApplySteps }}
