@@ -1,0 +1,71 @@
+parameters:
+- name: AzureRMServiceConnection # name of the Service Connection
+  type: string
+- name: storage_account_resource_group_name # The name of the resource group which contains the storage account selected below
+  type: string
+  default: 'rg-TerraformBackend-01'
+- name: storage_account_name # The name of the storage account which contains the Azure Blob container selected below.
+  type: string
+- name: container_name # The name of the Azure Blob container in which to store the Terraform remote state file.
+  type: string
+- name: key # The path to the Terraform remote state file inside the container. For example, if you want to store the state file, named terraform.tfstate, inside a folder, named tf, then give the input 'tf/terraform.tfstate'
+  type: string
+- name: variables
+  type: object
+  default: {}
+- name: terraformVersion # The Version number of terraform to install
+  type: string
+  default: '1.1.2'
+- name: commandOptions # additional arguments for terraform plan and apply
+  type: string
+  default: ''
+- name: commandOptionsInit # additional arguments for terraform
+  type: string
+  default: ''
+- name: workingDirectory # Folder with terraform files
+  type: string
+  default: '$(System.DefaultWorkingDirectory)'
+- name: environment #name of the envorenment to use
+  type: string
+- name: testSteps #steps to run between apply and destroy
+  type: stepList
+  default: []
+- name: initSteps #steps to run before init in each stage probably only runs fine when using DefaultWorkingDirectory as workingDirectory
+  type: stepList
+  default: []
+- name: jobName #name to use if using multiple jobs
+  type: string
+  default: Test
+
+jobs:
+- deployment: ${{ parameters.jobName }}
+  environment: ${{ parameters.environment }}
+  strategy:
+    runOnce:
+      deploy:
+        steps:
+        - checkout: self
+        - ${{ parameters.initSteps }}
+        - template: steps/terraform-init.yml
+          parameters:
+              AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+              storage_account_resource_group_name: ${{ parameters.storage_account_resource_group_name }}
+              terraformVersion: ${{ parameters.terraformVersion }}
+              storage_account_name: ${{ parameters.storage_account_name }}
+              container_name: ${{ parameters.container_name }}
+              key: ${{ parameters.key }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              commandOptions: '${{ parameters.commandOptionsInit }}'
+        - template: steps/terraform-apply.yml
+          parameters:
+              AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+              variables: ${{ parameters.variables }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              commandOptions: "${{ parameters.commandOptions }}"
+        - ${{ parameters.testSteps }}
+        - template: steps/terraform-destroy.yml
+          parameters:
+              AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+              variables: ${{ parameters.variables }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              commandOptions: "${{ parameters.commandOptions }}"
