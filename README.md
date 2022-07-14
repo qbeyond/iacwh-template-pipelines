@@ -39,7 +39,3 @@ parameters:
 
 To use the deploy Template you must create an Environment and configure Approvals!
 The environment is used as id of stages so it should only contain `[A-Za-z0-9]` or underscores. Spaces and dashes are replaces by underscrores and can be used.
-
-# Build and Test
-
-The Template Pipelines are tested by running them with examples (see `tests` subfolder).
