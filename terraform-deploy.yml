@@ -38,6 +38,8 @@ parameters:
   - name: afterApplySteps #steps run after terraform apply
     type: stepList
     default: []
+  - name: repository
+    type: string
 
 stages:
   - stage: "Plan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
@@ -45,6 +47,20 @@ stages:
     jobs:
       - job: Plan
         steps:
+          - checkout: ${{ parameters.repository}}
+            path: terraform
+          - checkout: self
+            path: config
+          - task: PowerShell@2
+            displayName: Copy Config
+            inputs:
+              targetType: 'inline'
+              script: |
+                Get-ChildItem -Path ".." -Recurse | select *
+                Copy-Item -Path ../config/* -Destination ${{ parameters.workingDirectory }} -Include *.tfvars
+                Copy-Item -Path ../terraform/* -Destination ${{ parameters.workingDirectory }} -Recurse
+                Get-ChildItem ${{ parameters.workingDirectory }} -Recurse | select *
+              failOnStderr: true
           - ${{ parameters.initSteps }}
           - template: steps/terraform-init.yml
             parameters:
