@@ -120,7 +120,7 @@ stages:
                     cleanDestinationFolder: false
                 - template: steps/terraform-init.yml
                   parameters:
-                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnectiontfState }}
                     storage_account_resource_group_name: ${{ parameters.storage_account_resource_group_name }}
                     terraformVersion: ${{ parameters.terraformVersion }}
                     storage_account_name: ${{ parameters.storage_account_name }}
