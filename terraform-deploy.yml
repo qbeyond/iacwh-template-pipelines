@@ -46,18 +46,20 @@ parameters:
 stages:
   - stage: "Plan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
     displayName: "${{ parameters.environment }} - Plan Deployment"
+    condition: not(or(failed(), canceled()))
     jobs:
       - job: Plan
         steps:
           - checkout: ${{ parameters.repository}}
             path: terraform
-          - checkout: self
+          - checkout:  iacwh-template-pipelines
             path: config
           - task: PowerShell@2
             displayName: Copy Config
             inputs:
               targetType: 'inline'
               script: |
+                tree ..
                 Get-ChildItem -Path ".." -Recurse | select *
                 Copy-Item -Path ../config/* -Destination ${{ parameters.workingDirectory }} -Include *.tfvars
                 Copy-Item -Path ../terraform/* -Destination ${{ parameters.workingDirectory }} -Recurse
