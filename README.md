@@ -12,7 +12,7 @@ Since this repository is located in GitHub, a [corresponding service connection]
 ```
 resources:
   repositories:
-    - repository: iac-warehouse-templates
+    - repository: iacwh-template-pipelines                 # name is referenced in template, don't change this
       type: github
       name: qbeyond/iacwh-template-pipelines
       endpoint: MyGithubServiceConnection
@@ -22,8 +22,10 @@ resources:
 Afterwards you can reference the needed template and adjust the parameters as appropriate.
 
 ```
-- template: terraform-deploy.yml@iac-warehouse-templates  # Template reference
+- template: terraform-deploy.yml@iacwh-template-pipelines  # Template reference
 parameters:
+    repository: self                                       # if referencing this template multiple times, specify repo name
+    AzureRMServiceConnectiontfState: 'ServiceConnectionForTfState'
     AzureRMServiceConnection: 'ServiceConnection'
     storage_account_resource_group_name: 'resource-group'
     terraformVersion: '1.1.2'
