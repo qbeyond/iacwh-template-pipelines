@@ -49,6 +49,8 @@ stages:
     condition: not(or(failed(), canceled()))
     jobs:
       - job: Plan
+        workspace:
+          clean: resources
         steps:
           - checkout: ${{ parameters.repository}}
             path: terraform
@@ -99,6 +101,8 @@ stages:
     condition: and(succeeded(), or(${{ containsValue(parameters.allowedBranches,variables['Build.SourceBranch']) }}, eq(${{ length(parameters.allowedBranches)  }},0)))
     jobs:
       - deployment: Deploy
+        workspace:
+          clean: resources
         environment: ${{ parameters.environment }}
         strategy:
           runOnce:
