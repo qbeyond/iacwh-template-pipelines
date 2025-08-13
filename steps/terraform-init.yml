@@ -20,7 +20,7 @@ parameters:
   default: '$(System.DefaultWorkingDirectory)'
 
 steps:
-- task: TerraformInstaller@0
+- task: TerraformInstaller@1
   inputs:
     terraformVersion: ${{ parameters.terraformVersion }}
 - task: PowerShell@2
