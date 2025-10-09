@@ -6,6 +6,9 @@ parameters:
   - name: storage_account_resource_group_name # The name of the resource group which contains the storage account selected below
     type: string
     default: "rg-TerraformBackend-01"
+  - name: backendAzureRmUseEntraIdForAuthentication
+    type: boolean
+    default: false
   - name: storage_account_name # The name of the storage account which contains the Azure Blob container selected below.
     type: string
   - name: container_name # The name of the Azure Blob container in which to store the Terraform remote state file.
@@ -76,6 +79,7 @@ stages:
               key: ${{ parameters.key }}
               workingDirectory: ${{ parameters.workingDirectory }}
               commandOptions: "${{ parameters.commandOptionsInit }}"
+              backendAzureRmUseEntraIdForAuthentication: ${{ parameters.backendAzureRmUseEntraIdForAuthentication }}
           - template: steps/terraform-plan.yml
             parameters:
               AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}

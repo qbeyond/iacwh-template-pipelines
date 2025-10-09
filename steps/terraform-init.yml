@@ -5,6 +5,9 @@ parameters:
   type: string
 - name: storage_account_name # The name of the storage account which contains the Azure Blob container selected below.
   type: string
+- name: backendAzureRmUseEntraIdForAuthentication
+  type: boolean
+  default: false
 - name: container_name # The name of the Azure Blob container in which to store the Terraform remote state file.
   type: string
 - name: key # The path to the Terraform remote state file inside the container. For example, if you want to store the state file, named terraform.tfstate, inside a folder, named tf, then give the input 'tf/terraform.tfstate'
@@ -31,7 +34,7 @@ steps:
       Set-Content -Value @('terraform {', '  backend "azurerm" {', '  }', '}') -Path "backendAzureRM.tf" -ErrorAction "STOP"
     failOnStderr: true
     workingDirectory: ${{ parameters.workingDirectory }}
-- task: TerraformTaskV2@2
+- task: TerraformTask@5
   displayName: Run Terraform init
   inputs:
     provider: 'azurerm'
@@ -41,5 +44,6 @@ steps:
     backendAzureRmStorageAccountName: ${{ parameters.storage_account_name }}
     backendAzureRmContainerName: ${{ parameters.container_name }}
     backendAzureRmKey: ${{ parameters.key }}
+    backendAzureRmUseEntraIdForAuthentication: ${{ parameters.backendAzureRmUseEntraIdForAuthentication }}
     workingDirectory: ${{ parameters.workingDirectory }}
     commandOptions: '-input=false ${{ parameters.commandOptions }}'
