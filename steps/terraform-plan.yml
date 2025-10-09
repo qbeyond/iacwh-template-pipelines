@@ -12,7 +12,7 @@ parameters:
   default: '$(System.DefaultWorkingDirectory)'
 
 steps:
-- task: TerraformTaskV2@2
+- task: TerraformTask@5
   displayName: Terraform plan
   inputs:
     provider: 'azurerm'
