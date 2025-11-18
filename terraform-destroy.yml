@@ -82,7 +82,7 @@ stages:
               rootFolderOrFile: ${{ parameters.workingDirectory }}
               includeRootFolder: false
               archiveType: "tar"
-              archiveFile: "$(Build.ArtifactStagingDirectory)/ELMA.tar.gz"
+              archiveFile: "$(Build.ArtifactStagingDirectory)/QBY.tar.gz"
               replaceExistingArchive: true
           - publish: $(Build.ArtifactStagingDirectory)
             artifact: ${{ parameters.environment }}
@@ -113,7 +113,7 @@ stages:
                     targetPath: $(Build.ArtifactStagingDirectory)
                 - task: ExtractFiles@1
                   inputs:
-                    archiveFilePatterns: "$(Build.ArtifactStagingDirectory)/ELMA.tar.gz"
+                    archiveFilePatterns: "$(Build.ArtifactStagingDirectory)/QBY.tar.gz"
                     destinationFolder: "$(System.DefaultWorkingDirectory)"
                     cleanDestinationFolder: false
 
