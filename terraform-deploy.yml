@@ -72,6 +72,9 @@ parameters:
   - name: templateVariables
     type: object
     default: {}
+  - name: planDependsOnStage
+    type: string
+    default: ''
 
 stages:
   - stage: "Plan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
@@ -149,7 +152,7 @@ stages:
               steps:
                 #Use download task (https://github.com/microsoft/azure-pipelines-tasks/issues/11267)
                 - download: none
-                - ${{ parameters.initSteps }}
+                - ${{ parameters.initStepsApply }}
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download Plan"
                   inputs:
