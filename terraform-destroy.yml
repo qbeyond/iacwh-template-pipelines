@@ -1,0 +1,137 @@
+parameters:
+  - name: AzureRMServiceConnection
+    type: string
+  - name: AzureRMServiceConnectiontfState
+    type: string
+  - name: storage_account_resource_group_name
+    type: string
+    default: "rg-TerraformBackend-01"
+  - name: storage_account_name
+    type: string
+  - name: container_name
+    type: string
+  - name: key
+    type: string
+  - name: variables
+    type: object
+    default: {}
+  - name: terraformVersion
+    type: string
+    default: "1.1.2"
+  - name: commandOptions
+    type: string
+    default: ""
+  - name: commandOptionsInit
+    type: string
+    default: ""
+  - name: workingDirectory
+    type: string
+    default: "$(System.DefaultWorkingDirectory)/$(Build.Repository.Name)"
+  - name: environment
+    type: string
+  - name: repository
+    type: string
+  - name: cleanWorkspace
+    type: string
+    default: "resources"
+  - name: allowedBranches
+    type: object
+    default:
+      - "refs/heads/master"
+      - "refs/heads/main"
+  - name: azureRmUseIdTokenGeneration # In AzureRm version >3.80 it is needed to be set to true
+    type: boolean
+    default: false
+
+# ------------------ STAGE 1: PLAN DESTROY ------------------
+stages:
+  - stage: "DestroyPlan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    displayName: "${{ parameters.environment }} - Destroy Plan"
+    condition: and(succeeded(),or(${{ containsValue(parameters.allowedBranches, variables['Build.SourceBranch']) }},eq(${{ length(parameters.allowedBranches) }}, 0)))
+    jobs:
+      - job: PlanDestroy
+        displayName: "Terraform Plan (Destroy)"
+        workspace:
+          clean: ${{ parameters.cleanWorkspace }}
+        steps:
+          - checkout: ${{ parameters.repository }}
+          - checkout: iacwh-template-pipelines
+
+          - template: steps/terraform-init.yml
+            parameters:
+              AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnectiontfState }}
+              storage_account_resource_group_name: ${{ parameters.storage_account_resource_group_name }}
+              terraformVersion: ${{ parameters.terraformVersion }}
+              storage_account_name: ${{ parameters.storage_account_name }}
+              container_name: ${{ parameters.container_name }}
+              key: ${{ parameters.key }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              commandOptions: "${{ parameters.commandOptionsInit }}"
+              backendAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
+
+          - template: steps/terraform-plan.yml
+            parameters:
+              AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+              variables: ${{ parameters.variables }}
+              workingDirectory: ${{ parameters.workingDirectory }}
+              commandOptions: "-destroy -out=tfplan ${{ parameters.commandOptions }}"
+              environmentAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
+
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: ${{ parameters.workingDirectory }}
+              includeRootFolder: false
+              archiveType: "tar"
+              archiveFile: "$(Build.ArtifactStagingDirectory)/ELMA.tar.gz"
+              replaceExistingArchive: true
+          - publish: $(Build.ArtifactStagingDirectory)
+            artifact: ${{ parameters.environment }}
+
+# ------------------ STAGE 2: APPLY DESTROY ------------------
+  - stage: "DestroyApply${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    displayName: "${{ parameters.environment }} - Destroy Apply"
+    dependsOn: "DestroyPlan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    condition: and(succeeded(),or(${{ containsValue(parameters.allowedBranches, variables['Build.SourceBranch']) }},eq(${{ length(parameters.allowedBranches) }}, 0)))
+    jobs:
+      - deployment: Destroy
+        displayName: "Terraform Destroy"
+        environment: "${{ parameters.environment }}"
+        workspace:
+          clean: ${{ parameters.cleanWorkspace }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - checkout: ${{ parameters.repository }}
+                - checkout: iacwh-template-pipelines
+
+                - task: DownloadPipelineArtifact@2
+                  displayName: "Download Plan"
+                  inputs:
+                    source: current
+                    artifactName: ${{ parameters.environment }}
+                    targetPath: $(Build.ArtifactStagingDirectory)
+                - task: ExtractFiles@1
+                  inputs:
+                    archiveFilePatterns: "$(Build.ArtifactStagingDirectory)/ELMA.tar.gz"
+                    destinationFolder: "$(System.DefaultWorkingDirectory)"
+                    cleanDestinationFolder: false
+
+                - template: steps/terraform-init.yml
+                  parameters:
+                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnectiontfState }}
+                    storage_account_resource_group_name: ${{ parameters.storage_account_resource_group_name }}
+                    terraformVersion: ${{ parameters.terraformVersion }}
+                    storage_account_name: ${{ parameters.storage_account_name }}
+                    container_name: ${{ parameters.container_name }}
+                    key: ${{ parameters.key }}
+                    workingDirectory: "$(System.DefaultWorkingDirectory)"
+                    commandOptions: "${{ parameters.commandOptionsInit }}"
+                    backendAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
+
+                - template: steps/terraform-apply.yml
+                  parameters:
+                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+                    workingDirectory: "$(System.DefaultWorkingDirectory)"
+                    commandOptions: "-destroy tfplan ${{ parameters.commandOptions }}"
+                    environmentAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
