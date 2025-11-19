@@ -35,26 +35,61 @@ parameters:
     default: "$(System.DefaultWorkingDirectory)"
   - name: environment #name of the envorenment to use - should only contain [A-Za-z0-9] or underscores, dashes, spaces as used as stage id
     type: string
-  - name: initSteps #steps to run before init in each stage probably only runs fine when using DefaultWorkingDirectory as workingDirectory
+  - name: initStepsPlan #steps to run before init in each plan stage probably only runs fine when using DefaultWorkingDirectory as workingDirectory
     type: stepList
+    default: []
+  - name: initStepsApply #steps to run before init in each apply stage probably only runs fine when using DefaultWorkingDirectory as workingDirectory
+    type: stepList
+    default: []
+  - name: beforePlanJobs
+    type: jobList
+    default: []
+  - name: beforeDeployJobs
+    type: jobList
+    default: []
+  - name: afterDeployJobs
+    type: jobList
     default: []
   - name: allowedBranches #List of branches to allow deployment from
     type: object
     default:
       - "refs/heads/master"
       - "refs/heads/main"
+  - name: preApplySteps
+    type: stepList
+    default: []
+  - name: useCLIApply
+    type: boolean
+    default: false
   - name: afterApplySteps #steps run after terraform apply
     type: stepList
     default: []
   - name: repository
     type: string
+  - name: timeoutInMinutes 
+    type: number
+    default: 60
+  - name: templateVariables
+    type: object
+    default: {}
+  - name: planDependsOnStage
+    type: string
+    default: ''
 
 stages:
   - stage: "Plan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    ${{ if ne(parameters.planDependsOnStage, '') }}:
+      dependsOn: ${{ parameters.planDependsOnStage }}
     displayName: "${{ parameters.environment }} - Plan Deployment"
     condition: not(or(failed(), canceled()))
+    ${{ if ne(length(parameters.templateVariables), 0) }}:
+      variables:
+        ${{ each pair in parameters.templateVariables }}:
+          ${{ pair.key }}: ${{ pair.value }}
     jobs:
+      - ${{ parameters.beforePlanJobs }}
       - job: Plan
+        timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
         steps:
           - checkout: ${{ parameters.repository}}
             path: terraform
@@ -71,7 +106,7 @@ stages:
                 Copy-Item -Path ../terraform/* -Destination ${{ parameters.workingDirectory }} -Recurse
                 Get-ChildItem ${{ parameters.workingDirectory }} -Recurse | select *
               failOnStderr: true
-          - ${{ parameters.initSteps }}
+          - ${{ parameters.initStepsPlan }}
           - template: steps/terraform-init.yml
             parameters:
               AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnectiontfState }}
@@ -107,7 +142,9 @@ stages:
     dependsOn: "Plan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
     condition: and(succeeded(), or(${{ containsValue(parameters.allowedBranches,variables['Build.SourceBranch']) }}, eq(${{ length(parameters.allowedBranches)  }},0)))
     jobs:
+      - '${{ parameters.beforeDeployJobs }}'
       - deployment: Deploy
+        timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
         environment: ${{ parameters.environment }}
         strategy:
           runOnce:
@@ -115,7 +152,7 @@ stages:
               steps:
                 #Use download task (https://github.com/microsoft/azure-pipelines-tasks/issues/11267)
                 - download: none
-                - ${{ parameters.initSteps }}
+                - ${{ parameters.initStepsApply }}
                 - task: DownloadPipelineArtifact@2
                   displayName: "Download Plan"
                   inputs:
@@ -139,11 +176,24 @@ stages:
                     commandOptions: "${{ parameters.commandOptionsinit }}"
                     backendAzureRmUseEntraIdForAuthentication: ${{ parameters.backendAzureRmUseEntraIdForAuthentication }}
                     backendAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
-                - template: steps/terraform-apply.yml
-                  parameters:
-                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
-                    workingDirectory: "$(System.DefaultWorkingDirectory)"
-                    commandOptions: "${{ parameters.commandOptions }} tfplan"
-                    environmentAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
-
+                - ${{ parameters.preApplySteps }}
+                - ${{ if eq(parameters.useCLIApply, false) }}:
+                  - template: steps/terraform-apply.yml
+                    parameters:
+                      AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+                      workingDirectory: "$(System.DefaultWorkingDirectory)"
+                      commandOptions: "${{ parameters.commandOptions }} tfplan"
+                      environmentAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
+                - ${{ if eq(parameters.useCLIApply, true) }}:
+                  - task: AzureCLI@2
+                    displayName: "Terraform Apply via Azure CLI"
+                    inputs:
+                      azureSubscription: ${{ parameters.AzureRMServiceConnection }}
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: |
+                        echo "Authenticated to Azure via CLI"
+                        cd "$(System.DefaultWorkingDirectory)"
+                        terraform apply -input=false -auto-approve tfplan
                 - ${{ parameters.afterApplySteps }}
+      - ${{ parameters.afterDeployJobs }}
