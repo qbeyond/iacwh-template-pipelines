@@ -1,61 +1,107 @@
 parameters:
-  - name: AzureRMServiceConnection
+  - name: AzureRMServiceConnection # name of the Service Connection
     type: string
   - name: AzureRMServiceConnectiontfState
     type: string
-  - name: storage_account_resource_group_name
+  - name: storage_account_resource_group_name # The name of the resource group which contains the storage account selected below
     type: string
     default: "rg-TerraformBackend-01"
-  - name: storage_account_name
+  - name: backendAzureRmUseEntraIdForAuthentication
+    type: boolean
+    default: false
+  - name: azureRmUseIdTokenGeneration # In AzureRm version >3.80 it is needed to be set to true
+    type: boolean
+    default: false
+  - name: storage_account_name # The name of the storage account which contains the Azure Blob container selected below.
     type: string
-  - name: container_name
+  - name: container_name # The name of the Azure Blob container in which to store the Terraform remote state file.
     type: string
-  - name: key
+  - name: key # The path to the Terraform remote state file inside the container. For example, if you want to store the state file, named terraform.tfstate, inside a folder, named tf, then give the input 'tf/terraform.tfstate'
     type: string
   - name: variables
     type: object
     default: {}
-  - name: terraformVersion
+  - name: terraformVersion # The Version number of terraform to install
     type: string
     default: "1.1.2"
-  - name: commandOptions
+  - name: commandOptions # additional arguments for terraform plan and apply
     type: string
     default: ""
-  - name: commandOptionsInit
+  - name: commandOptionsInit # additional arguments for terraform init
     type: string
     default: ""
-  - name: workingDirectory
+  - name: workingDirectory # Folder with terraform files
     type: string
     default: "$(System.DefaultWorkingDirectory)/$(Build.Repository.Name)"
-  - name: environment
+  - name: environment #name of the envorenment to use - should only contain [A-Za-z0-9] or underscores, dashes, spaces as used as stage id
     type: string
-  - name: repository
-    type: string
-  - name: cleanWorkspace
-    type: string
-    default: "resources"
-  - name: allowedBranches
+  - name: initStepsPlan # steps to run before init in the plan/destroy stage
+    type: stepList
+    default: []
+  - name: initStepsApply # steps to run before init in the apply/destroy stage
+    type: stepList
+    default: []
+  - name: beforePlanJobs
+    type: jobList
+    default: []
+  - name: beforeDeployJobs
+    type: jobList
+    default: []
+  - name: afterDeployJobs
+    type: jobList
+    default: []
+  - name: allowedBranches #List of branches to allow deployment from
     type: object
     default:
       - "refs/heads/master"
       - "refs/heads/main"
-  - name: azureRmUseIdTokenGeneration # In AzureRm version >3.80 it is needed to be set to true
+  - name: preApplySteps
+    type: stepList
+    default: []
+  - name: useCLIApply
     type: boolean
     default: false
+  - name: afterApplySteps # steps run after terraform destroy apply
+    type: stepList
+    default: []
+  - name: repository
+    type: string
+  - name: timeoutInMinutes
+    type: number
+    default: 60
+  - name: templateVariables
+    type: object
+    default: {}
+  - name: planDependsOnStage
+    type: string
+    default: ''
+  - name: cleanWorkspace
+    type: string
+    default: "resources"
 
 # ------------------ STAGE 1: PLAN DESTROY ------------------
 stages:
   - stage: "DestroyPlan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
+    ${{ if ne(parameters.planDependsOnStage, '') }}:
+      dependsOn: ${{ parameters.planDependsOnStage }}
     displayName: "${{ parameters.environment }} - Destroy Plan"
     condition: and(succeeded(),or(${{ containsValue(parameters.allowedBranches, variables['Build.SourceBranch']) }},eq(${{ length(parameters.allowedBranches) }}, 0)))
+    ${{ if ne(length(parameters.templateVariables), 0) }}:
+      variables:
+        ${{ each pair in parameters.templateVariables }}:
+          ${{ pair.key }}: ${{ pair.value }}
     jobs:
+      - ${{ parameters.beforePlanJobs }}
       - job: PlanDestroy
         displayName: "Terraform Plan (Destroy)"
+        timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
         workspace:
           clean: ${{ parameters.cleanWorkspace }}
         steps:
           - checkout: ${{ parameters.repository }}
           - checkout: iacwh-template-pipelines
+
+          - ${{ parameters.initStepsPlan }}
 
           - template: steps/terraform-init.yml
             parameters:
@@ -67,6 +113,7 @@ stages:
               key: ${{ parameters.key }}
               workingDirectory: ${{ parameters.workingDirectory }}
               commandOptions: "${{ parameters.commandOptionsInit }}"
+              backendAzureRmUseEntraIdForAuthentication: ${{ parameters.backendAzureRmUseEntraIdForAuthentication }}
               backendAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
 
           - template: steps/terraform-plan.yml
@@ -93,9 +140,11 @@ stages:
     dependsOn: "DestroyPlan${{ replace(replace(parameters.environment, '-','_'),' ','_') }}"
     condition: and(succeeded(),or(${{ containsValue(parameters.allowedBranches, variables['Build.SourceBranch']) }},eq(${{ length(parameters.allowedBranches) }}, 0)))
     jobs:
+      - ${{ parameters.beforeDeployJobs }}
       - deployment: Destroy
         displayName: "Terraform Destroy"
         environment: "${{ parameters.environment }}"
+        timeoutInMinutes: ${{ parameters.timeoutInMinutes }}
         workspace:
           clean: ${{ parameters.cleanWorkspace }}
         strategy:
@@ -117,6 +166,8 @@ stages:
                     destinationFolder: "$(System.DefaultWorkingDirectory)"
                     cleanDestinationFolder: false
 
+                - ${{ parameters.initStepsApply }}
+
                 - template: steps/terraform-init.yml
                   parameters:
                     AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnectiontfState }}
@@ -127,11 +178,31 @@ stages:
                     key: ${{ parameters.key }}
                     workingDirectory: "$(System.DefaultWorkingDirectory)"
                     commandOptions: "${{ parameters.commandOptionsInit }}"
+                    backendAzureRmUseEntraIdForAuthentication: ${{ parameters.backendAzureRmUseEntraIdForAuthentication }}
                     backendAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
 
-                - template: steps/terraform-apply.yml
-                  parameters:
-                    AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
-                    workingDirectory: "$(System.DefaultWorkingDirectory)"
-                    commandOptions: "-destroy tfplan ${{ parameters.commandOptions }}"
-                    environmentAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
+                - ${{ parameters.preApplySteps }}
+
+                - ${{ if eq(parameters.useCLIApply, false) }}:
+                  - template: steps/terraform-apply.yml
+                    parameters:
+                      AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
+                      workingDirectory: "$(System.DefaultWorkingDirectory)"
+                      commandOptions: "-destroy tfplan ${{ parameters.commandOptions }}"
+                      environmentAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
+
+                - ${{ if eq(parameters.useCLIApply, true) }}:
+                  - task: AzureCLI@2
+                    displayName: "Terraform Destroy via Azure CLI"
+                    inputs:
+                      azureSubscription: ${{ parameters.AzureRMServiceConnection }}
+                      scriptType: bash
+                      scriptLocation: inlineScript
+                      inlineScript: |
+                        echo "Authenticated to Azure via CLI"
+                        cd "$(System.DefaultWorkingDirectory)"
+                        terraform apply -input=false -auto-approve -destroy tfplan
+
+                - ${{ parameters.afterApplySteps }}
+
+      - ${{ parameters.afterDeployJobs }}
