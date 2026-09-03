@@ -1,0 +1,29 @@
+parameters:
+- name: AzureRMServiceConnection # name of the Service Connection
+  type: string
+- name: variables
+  type: object
+  default: {}
+- name: commandOptions # additional arguments for terraform
+  type: string
+  default: ''
+- name: workingDirectory # Folder with terraform files
+  type: string
+  default: '$(System.DefaultWorkingDirectory)'
+- name: environmentAzureRmUseIdTokenGeneration
+  type: boolean
+  default: false
+
+steps:
+- task: TerraformTask@5
+  displayName: Terraform refresh state
+  inputs:
+    provider: 'azurerm'
+    command: 'apply'
+    environmentServiceNameAzureRM: ${{ parameters.AzureRMServiceConnection }}
+    workingDirectory: ${{ parameters.workingDirectory }}
+    commandOptions: '-refresh-only -input=false ${{ parameters.commandOptions }}'
+    environmentAzureRmUseIdTokenGeneration: ${{ parameters.environmentAzureRmUseIdTokenGeneration }}
+  env:
+    ${{ each variable in parameters.variables }}:
+      ${{ format('TF_VAR_{0}', variable.key) }}: ${{ variable.value }}
