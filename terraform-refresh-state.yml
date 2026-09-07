@@ -35,10 +35,10 @@ parameters:
     default: "$(System.DefaultWorkingDirectory)/$(Build.Repository.Name)"
   - name: environment #name of the envorenment to use - should only contain [A-Za-z0-9] or underscores, dashes, spaces as used as stage id
     type: string
-  - name: initStepsPlan # steps to run before init in the plan/destroy stage
+  - name: initStepsPlan # steps to run before init in the plan/refresh stage
     type: stepList
     default: []
-  - name: initStepsApply # steps to run before init in the apply/destroy stage
+  - name: initStepsApply # steps to run before init in the apply/refresh stage
     type: stepList
     default: []
   - name: beforePlanJobs
@@ -61,7 +61,7 @@ parameters:
   - name: useCLIApply
     type: boolean
     default: false
-  - name: afterApplySteps # steps run after terraform destroy apply
+  - name: afterApplySteps # steps run after terraform refresh apply
     type: stepList
     default: []
   - name: repository
@@ -188,7 +188,7 @@ stages:
                     parameters:
                       AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
                       workingDirectory: "$(System.DefaultWorkingDirectory)"
-                      commandOptions: "-refresh-only tfplan ${{ parameters.commandOptions }}"
+                      commandOptions: "tfplan ${{ parameters.commandOptions }}"
                       environmentAzureRmUseIdTokenGeneration: ${{ parameters.azureRmUseIdTokenGeneration }}
 
                 - ${{ if eq(parameters.useCLIApply, true) }}:

@@ -22,7 +22,7 @@ steps:
     command: 'apply'
     environmentServiceNameAzureRM: ${{ parameters.AzureRMServiceConnection }}
     workingDirectory: ${{ parameters.workingDirectory }}
-    commandOptions: '-refresh-only -input=false ${{ parameters.commandOptions }}'
+    commandOptions: '-input=false ${{ parameters.commandOptions }}'
     environmentAzureRmUseIdTokenGeneration: ${{ parameters.environmentAzureRmUseIdTokenGeneration }}
   env:
     ${{ each variable in parameters.variables }}:
