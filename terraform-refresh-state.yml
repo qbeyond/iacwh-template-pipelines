@@ -184,7 +184,7 @@ stages:
                 - ${{ parameters.preApplySteps }}
 
                 - ${{ if eq(parameters.useCLIApply, false) }}:
-                  - template: steps/terraform-apply.yml
+                  - template: steps/terraform-refresh-state.yml
                     parameters:
                       AzureRMServiceConnection: ${{ parameters.AzureRMServiceConnection }}
                       workingDirectory: "$(System.DefaultWorkingDirectory)"
